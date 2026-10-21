@@ -13,9 +13,10 @@ enum TimeText {
         return calendar
     }()
 
-    private static func formatter(_ format: String, timeZone: TimeZone? = nil) -> DateFormatter {
+    /// 決まった形の日時は en_US_POSIX で作る（端末の12時間表示などの設定に左右されないため）
+    private static func formatter(_ format: String, timeZone: TimeZone? = nil, locale: String = "en_US_POSIX") -> DateFormatter {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.locale = Locale(identifier: locale)
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = format
         if let timeZone { formatter.timeZone = timeZone }
@@ -23,7 +24,7 @@ enum TimeText {
     }
 
     private static let hourMinute = formatter("HH:mm")
-    private static let fullDayFormatter = formatter("yyyy年M月d日（E）")
+    private static let fullDayFormatter = formatter("yyyy年M月d日（E）", locale: "ja_JP")
     private static let monthDayFormatter = formatter("M/d")
     private static let dayKeyFormatter = formatter("yyyy-MM-dd", timeZone: tokyo)
     private static let tokyoHourMinute = formatter("HH:mm", timeZone: tokyo)

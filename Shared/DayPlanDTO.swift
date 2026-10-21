@@ -22,6 +22,11 @@ struct DayPlanDTO: Codable, Hashable, Sendable {
         var actualEnd: String?
         var carriedOverCount: Int
         var hasHandwritingImage: Bool
+
+        /// JSON の項目名（エンコーダー・デコーダーがスネークケースに変える：actualStart → actual_start）
+        enum CodingKeys: String, CodingKey {
+            case id, text, start, end, category, status, actualStart, actualEnd, carriedOverCount, hasHandwritingImage
+        }
     }
 
     static let encoder: JSONEncoder = {
@@ -58,5 +63,20 @@ extension DayPlanDTO.Card {
         actualEnd = try container.decodeIfPresent(String.self, forKey: .actualEnd)
         carriedOverCount = try container.decodeIfPresent(Int.self, forKey: .carriedOverCount) ?? 0
         hasHandwritingImage = try container.decodeIfPresent(Bool.self, forKey: .hasHandwritingImage) ?? false
+    }
+
+    /// サーバー（MCP）と同じ形にするため、値がないときも "actual_start": null のように書き出す
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(text, forKey: .text)
+        try container.encode(start, forKey: .start)
+        try container.encode(end, forKey: .end)
+        try container.encode(category, forKey: .category)
+        try container.encode(status, forKey: .status)
+        try container.encode(actualStart, forKey: .actualStart)
+        try container.encode(actualEnd, forKey: .actualEnd)
+        try container.encode(carriedOverCount, forKey: .carriedOverCount)
+        try container.encode(hasHandwritingImage, forKey: .hasHandwritingImage)
     }
 }

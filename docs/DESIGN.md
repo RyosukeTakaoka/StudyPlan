@@ -290,7 +290,7 @@
 | `Settings` モデル | SwiftData のモデルにせず、`UserDefaults`（`@AppStorage`）に保存 | 端末ごとの設定で、同期の対象ではないため |
 | 持ち越し元 | `Card.carriedFromCardID`（UUID）で持つ。前7日の「持ち越し」と同じタイトルのカードを撮影時につなぎ、回数を引き継ぐ | CloudKit とサーバーの列（carried_from_card_id）にそのまま対応させるため |
 | DayPlanDTO | 例の項目に `category` を足した | D1 の cards.category と同じ値で、AI にも役立つため |
-| D1 | 各表に `synced_at`（サーバーが受け取った時刻）を足した | `pull?since=` の目印。端末の時計のずれで取りこぼさないため |
+| D1 | 各表に `synced_at`（サーバーが受け取った時刻）を足した | `pull` の目印。端末の時計のずれや件数の多さで取りこぼさないため（`has_more` で続きを返す） |
 | MCP の通信 | Streamable HTTP（`/mcp`）だけ。リクエストごとに作る「状態を持たない」方式 | Durable Objects が要らず、構成が単純になるため |
 | フェーズBの書き込みツール | `MCP_ALLOW_WRITES` を `"true"` にしたときだけ出す（初期値は読み取り専用） | 書き込みは様子を見てから有効にできるように |
 | Live Activities | 作らない（v0.1 の方針どおりウィジェットを主役に） | 設計書 6 の方針 |

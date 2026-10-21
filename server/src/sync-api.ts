@@ -56,7 +56,8 @@ syncApi.post("/v1/sync/push", async (c) => {
 
 syncApi.get("/v1/sync/pull", async (c) => {
   try {
-    const result = await pull(c.env.DB, c.req.query("since") ?? "");
+    const settleMs = c.env.SYNC_SETTLE_MS === undefined ? undefined : Number(c.env.SYNC_SETTLE_MS);
+    const result = await pull(c.env.DB, c.req.query("since") ?? "", { settleMs });
     logEvent("sync_pull", { cards: result.changes.cards.length, time_logs: result.changes.time_logs.length });
     return c.json(result);
   } catch (error) {

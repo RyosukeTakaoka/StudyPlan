@@ -4,8 +4,9 @@ import SwiftData
 /// AI連携サーバー（Cloudflare Workers + D1）との同期。設定で明示的にオンにしたときだけ動く（初期値オフ）。
 ///
 /// - 画像は送らない（has_handwriting_image で「あるかどうか」だけを伝える）
+/// - 文字数などはサーバーの上限（server/src/sync.ts）に合わせて切り詰める
 /// - POST /v1/sync/push：前回送ってから変わったものをまとめて送る。同じ内容を2回送っても結果は同じ（冪等）
-/// - GET /v1/sync/pull?since=：サーバー側の変更（MCP のフェーズBでの書き込み）を受け取る
+/// - GET /v1/sync/pull?since=：サーバー側の変更（MCP のフェーズBでの書き込み）を受け取る。since には前回の cursor をそのまま渡す
 /// - 競合したら updated_at が新しい方を採用する
 /// - 送受信の形は server/src/sync.ts と同じ
 /// - mainContext を使うので、メインスレッドで動かす（通信の待ち時間は画面を止めない）
@@ -21,6 +22,24 @@ enum ServerSync {
 
         var isEmpty: Bool { boards.isEmpty && snapshots.isEmpty && cards.isEmpty && timeLogs.isEmpty }
         var count: Int { boards.count + snapshots.count + cards.count + timeLogs.count }
+
+        /// 1回に送る件数を maxRecords 件までに分ける（ボード → 写真 → カード → 時間ログの順）
+        func chunked(maxRecords: Int) -> [Changes] {
+            var chunks: [Changes] = []
+            var current = Changes()
+            func flushIfFull() {
+                if current.count >= maxRecords {
+                    chunks.append(current)
+                    current = Changes()
+                }
+            }
+            for record in boards { current.boards.append(record); flushIfFull() }
+            for record in snapshots { current.snapshots.append(record); flushIfFull() }
+            for record in cards { current.cards.append(record); flushIfFull() }
+            for record in timeLogs { current.timeLogs.append(record); flushIfFull() }
+            if !current.isEmpty { chunks.append(current) }
+            return chunks
+        }
     }
 
     struct BoardRecord: Codable {
@@ -67,7 +86,10 @@ enum ServerSync {
 
     struct PushRequest: Codable { var changes: Changes }
     struct PushResponse: Codable { var accepted: Int; var ignored: Int; var serverTime: String }
-    struct PullResponse: Codable { var changes: Changes; var cursor: String }
+    struct PullResponse: Codable { var changes: Changes; var cursor: String; var hasMore: Bool? }
+
+    /// 1回の push で送る件数（サーバーの上限 2000 より十分小さく）
+    static let pushChunkSize = 500
 
     enum SyncError: LocalizedError {
         case notConfigured
@@ -126,23 +148,30 @@ enum ServerSync {
         let lastPush = defaults.object(forKey: Preferences.lastPushAt) as? Date ?? .distantPast
         let changes = collectChanges(since: lastPush, context: context)
         var pushed = 0
-        if !changes.isEmpty {
+        for chunk in changes.chunked(maxRecords: pushChunkSize) {
             let response: PushResponse = try await send(
-                "POST", path: "/v1/sync/push", body: PushRequest(changes: changes), baseURL: baseURL, token: token
+                "POST", path: "/v1/sync/push", body: PushRequest(changes: chunk), baseURL: baseURL, token: token
             )
-            pushed = response.accepted
+            pushed += response.accepted
         }
+        // すべて送れたときだけ進める（途中で失敗したら、次回もう一度送る。同じ内容は冪等なので害はない）
         defaults.set(pushStartedAt, forKey: Preferences.lastPushAt)
 
-        // 受け取る
-        let since = defaults.string(forKey: Preferences.lastPullCursor) ?? ""
-        let pull: PullResponse = try await send(
-            "GET", path: "/v1/sync/pull", query: [URLQueryItem(name: "since", value: since)],
-            body: Optional<PushRequest>.none, baseURL: baseURL, token: token
-        )
-        let applied = apply(pull.changes, context: context)
-        try? context.save()
-        defaults.set(pull.cursor, forKey: Preferences.lastPullCursor)
+        // 受け取る（多いときは has_more が false になるまで続ける）
+        var cursor = defaults.string(forKey: Preferences.lastPullCursor) ?? ""
+        var applied = 0
+        for _ in 0..<100 {
+            let pull: PullResponse = try await send(
+                "GET", path: "/v1/sync/pull", query: [URLQueryItem(name: "since", value: cursor)],
+                body: Optional<PushRequest>.none, baseURL: baseURL, token: token
+            )
+            applied += apply(pull.changes, context: context)
+            try? context.save()
+            cursor = pull.cursor
+            defaults.set(cursor, forKey: Preferences.lastPullCursor)
+            if pull.hasMore != true { break }
+        }
+        if applied > 0 { WidgetSync.refresh(using: context) }
         return "送信 \(pushed)件・反映 \(applied)件"
     }
 
@@ -201,21 +230,21 @@ enum ServerSync {
         changes.boards = fetch(Board.self).filter { $0.updatedAt > since }.map { board in
             BoardRecord(
                 id: key(board.id), updatedAt: iso(board.updatedAt), deletedAt: board.deletedAt.map(iso),
-                name: board.name, kind: board.kindRaw
+                name: String(board.name.prefix(200)), kind: String(board.kindRaw.prefix(40))
             )
         }
-        changes.snapshots = fetch(Snapshot.self).filter { $0.updatedAt > since && !$0.isSample }.map { snapshot in
+        changes.snapshots = fetch(Snapshot.self).filter { $0.updatedAt > since && !$0.isSample && !$0.dayKey.isEmpty }.map { snapshot in
             SnapshotRecord(
                 id: key(snapshot.id), updatedAt: iso(snapshot.updatedAt), deletedAt: snapshot.deletedAt.map(iso),
                 boardId: snapshot.board.map { key($0.id) }, targetDate: snapshot.dayKey, capturedAt: iso(snapshot.capturedAt)
             )
         }
-        changes.cards = fetch(Card.self).filter { $0.updatedAt > since && $0.snapshot?.isSample != true }.map { card in
+        changes.cards = fetch(Card.self).filter { $0.updatedAt > since && $0.snapshot?.isSample != true && !$0.dayKey.isEmpty }.map { card in
             CardRecord(
                 id: key(card.id), updatedAt: iso(card.updatedAt), deletedAt: card.deletedAt.map(iso),
-                snapshotId: card.snapshot.map { key($0.id) }, date: card.dayKey, text: card.transcription,
+                snapshotId: card.snapshot.map { key($0.id) }, date: card.dayKey, text: String(card.transcription.prefix(4000)),
                 start: TimeText.wireTime(card.start), end: TimeText.wireTime(card.end),
-                category: card.categoryRaw, status: card.statusRaw, carriedOverCount: card.carriedOverCount,
+                category: String(card.categoryRaw.prefix(40)), status: card.status.rawValue, carriedOverCount: card.carriedOverCount,
                 carriedFromCardId: card.carriedFromCardID.map(key), hasHandwritingImage: card.hasHandwritingImage
             )
         }

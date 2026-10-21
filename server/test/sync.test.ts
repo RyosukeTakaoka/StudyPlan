@@ -76,16 +76,16 @@ test("get_day_plan は撮り直した最新の写真のカードを時刻順に�
 test("pull は since より後に受け取った変更だけを返す", async () => {
   const db = createTestDb();
   await push(db, sample());
-  const all = await pull(db, "");
+  const all = await pull(db, "", { settleMs: 0 });
   assert.equal(all.changes.cards.length, 3);
   assert.equal(all.changes.cards[0]!.has_handwriting_image, true);
-  const none = await pull(db, all.cursor);
+  const none = await pull(db, all.cursor, { settleMs: 0 });
   assert.equal(none.changes.cards.length, 0);
 
   // MCP（フェーズB）での書き込みは、次の pull で受け取れる
   await new Promise((resolve) => setTimeout(resolve, 5));
   await updateCardStatus(db, CARD_A, "carried");
-  const after = await pull(db, all.cursor);
+  const after = await pull(db, all.cursor, { settleMs: 0 });
   assert.equal(after.changes.cards.length, 1);
   assert.equal(after.changes.cards[0]!.status, "carried");
   assert.ok(String(after.changes.cards[0]!.updated_at) > "2026-10-21T00:00:00.000Z");
@@ -121,4 +121,52 @@ test("list_days・get_review_context・list_carried_over_cards", async () => {
   assert.equal(sameDay.days.length, 0, "当日は含めない");
   const carried = await listCarriedOverCards(db, "2026-10-01");
   assert.deepEqual(carried.map((card) => card.id), [CARD_B]);
+});
+
+test("pull は多いときに has_more で続きを返し、同じ時刻に受け取った行も取りこぼさない", async () => {
+  const db = createTestDb();
+  const many = sample();
+  many.cards = Array.from({ length: 5 }, (_, index) => ({
+    ...many.cards[0]!,
+    id: `aaaaaaaa-aaaa-4aaa-8aaa-00000000000${index}`,
+    snapshot_id: null,
+  }));
+  await push(db, many); // 5件とも同じ synced_at
+  const seen = new Set<string>();
+  let cursor = "";
+  for (let round = 0; round < 10; round += 1) {
+    const page = await pull(db, cursor, { limit: 2, settleMs: 0 });
+    for (const card of page.changes.cards) seen.add(String(card.id));
+    cursor = page.cursor;
+    if (!page.has_more) break;
+  }
+  assert.equal(seen.size, 5);
+  const rest = await pull(db, cursor, { settleMs: 0 });
+  assert.equal(rest.changes.cards.length, 0);
+});
+
+test("pull は受け取った直後（書き込み途中かもしれない）の変更をまだ返さない", async () => {
+  const db = createTestDb();
+  await push(db, sample());
+  const fresh = await pull(db, "", { settleMs: 60_000 });
+  assert.equal(fresh.changes.cards.length, 0);
+  const later = await pull(db, fresh.cursor, { settleMs: 0 });
+  assert.equal(later.changes.cards.length, 3);
+});
+
+test("読めない cursor なら最初から渡し直す", async () => {
+  const db = createTestDb();
+  await push(db, sample());
+  const page = await pull(db, "2026-10-21T00:00:00.000Z", { settleMs: 0 });
+  assert.equal(page.changes.cards.length, 3);
+});
+
+test("cursor は URL にそのまま入れられる形（+ / = を含まない）", async () => {
+  const db = createTestDb();
+  await push(db, sample());
+  const page = await pull(db, "", { settleMs: 0 });
+  assert.match(page.cursor, /^v1\.[A-Za-z0-9_-]+$/);
+  // URL のクエリとして読み直しても同じ位置から続く
+  const roundTrip = new URL(`http://x/?since=${page.cursor}`).searchParams.get("since") ?? "";
+  assert.equal((await pull(db, roundTrip, { settleMs: 0 })).changes.cards.length, 0);
 });

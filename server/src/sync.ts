@@ -2,7 +2,7 @@
 //
 // - push：追加・更新・論理削除をまとめて受け取る。updated_at が新しいときだけ上書きするので、
 //   同じ内容を2回送っても結果は変わらない（冪等）。
-// - pull：サーバーが受け取った時刻（synced_at）が since より後のものを返す。
+// - pull：前回の cursor より後に受け取ったものを、表ごとに順番に返す（多いときは has_more で続きを取る）。
 // - 競合したら updated_at が新しい方を採用する。
 
 import { z } from "zod";
@@ -53,6 +53,7 @@ export const timeLogRecord = z.object({
   actual_end: z.string().regex(TIME_PATTERN).nullable().optional(),
 });
 
+/** 1回の push で受け取る件数の上限（表ごと）。アプリは 500 件ずつに分けて送る。 */
 const MAX_RECORDS = 2000;
 
 export const changesSchema = z.object({
@@ -119,31 +120,94 @@ export async function push(db: Db, changes: Changes): Promise<{ accepted: number
   return { accepted, ignored: statements.length - accepted, server_time: syncedAt };
 }
 
-const PULL_LIMIT = 2000;
+export const PULL_LIMIT = 2000;
+/** 書き込み途中の変更を取りこぼさないよう、受け取ってから少し時間がたったものだけを返す */
+export const SETTLE_MS = 2000;
 
-export async function pull(db: Db, since: string): Promise<{ changes: Changes; cursor: string }> {
-  // cursor を先に決め、それより後に受け取った変更は次回に回す（取りこぼさないため）
-  const cursor = nowIso();
-  const from = since && !Number.isNaN(Date.parse(since)) ? normalizeIso(since) : "";
-  const select = <T>(table: string, columns: string) =>
-    db.prepare(`SELECT ${columns} FROM ${table} WHERE synced_at > ? AND synced_at <= ? ORDER BY synced_at LIMIT ${PULL_LIMIT}`)
-      .bind(from, cursor).all<T>();
+const TABLES = ["boards", "snapshots", "cards", "time_logs"] as const;
+type Table = (typeof TABLES)[number];
+/** 表ごとの「どこまで渡したか」（最後に渡した行の synced_at と id） */
+type Positions = Record<Table, [string, string]>;
 
-  const [boards, snapshots, cards, timeLogs] = await Promise.all([
-    select<Record<string, unknown>>("boards", "id, updated_at, deleted_at, name, kind"),
-    select<Record<string, unknown>>("snapshots", "id, updated_at, deleted_at, board_id, target_date, captured_at"),
-    select<Record<string, unknown>>("cards",
-      `id, updated_at, deleted_at, snapshot_id, date, text, "start", "end", category, status, carried_over_count, carried_from_card_id, has_handwriting_image`),
-    select<Record<string, unknown>>("time_logs", "id, updated_at, deleted_at, card_id, actual_start, actual_end"),
-  ]);
+const START: Positions = { boards: ["", ""], snapshots: ["", ""], cards: ["", ""], time_logs: ["", ""] };
+
+/** cursor はアプリから見ると中身を気にしない文字列。中は表ごとの位置を JSON にしたもの。 */
+/** URL にそのまま入れられる形（base64url：+ / = を使わない）にする */
+function encodeCursor(positions: Positions): string {
+  const base64 = btoa(JSON.stringify(positions));
+  return `v1.${base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+}
+
+function decodeBase64Url(value: string): string {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  return atob(base64 + "=".repeat((4 - (base64.length % 4)) % 4));
+}
+
+function decodeCursor(cursor: string): Positions {
+  if (!cursor.startsWith("v1.")) return START;
+  try {
+    const parsed = JSON.parse(decodeBase64Url(cursor.slice(3))) as Partial<Positions>;
+    const positions = { ...START };
+    for (const table of TABLES) {
+      const value = parsed[table];
+      if (Array.isArray(value) && value.length === 2 && value.every((item) => typeof item === "string")) {
+        positions[table] = [value[0], value[1]];
+      }
+    }
+    return positions;
+  } catch {
+    // 読めない cursor なら最初から渡し直す（新しい方を採用するので、同じものが届いても害はない）
+    return START;
+  }
+}
+
+const COLUMNS: Record<Table, string> = {
+  boards: "id, updated_at, deleted_at, name, kind",
+  snapshots: "id, updated_at, deleted_at, board_id, target_date, captured_at",
+  cards: `id, updated_at, deleted_at, snapshot_id, date, text, "start", "end", category, status, carried_over_count, carried_from_card_id, has_handwriting_image`,
+  time_logs: "id, updated_at, deleted_at, card_id, actual_start, actual_end",
+};
+
+/**
+ * since（前回の cursor）より後に受け取った変更を返す。
+ * 1回に返すのは表ごとに limit 件まで。残りがあれば has_more が true になるので、アプリは続けて呼ぶ。
+ */
+export async function pull(
+  db: Db,
+  since: string,
+  options: { limit?: number; settleMs?: number } = {},
+): Promise<{ changes: Changes; cursor: string; has_more: boolean }> {
+  const limit = options.limit ?? PULL_LIMIT;
+  const upper = new Date(Date.now() - (options.settleMs ?? SETTLE_MS)).toISOString();
+  const positions = decodeCursor(since);
+  const next = { ...positions };
+  let hasMore = false;
+  const rows: Record<Table, Array<Record<string, unknown>>> = { boards: [], snapshots: [], cards: [], time_logs: [] };
+
+  for (const table of TABLES) {
+    const [syncedAt, id] = positions[table];
+    const { results } = await db
+      .prepare(
+        `SELECT ${COLUMNS[table]}, synced_at FROM ${table}
+         WHERE (synced_at > ?1 OR (synced_at = ?1 AND id > ?2)) AND synced_at <= ?3
+         ORDER BY synced_at, id LIMIT ${limit}`,
+      )
+      .bind(syncedAt, id, upper)
+      .all<Record<string, unknown>>();
+    const last = results.at(-1);
+    if (last) next[table] = [String(last.synced_at), String(last.id)];
+    if (results.length >= limit) hasMore = true;
+    rows[table] = results.map(({ synced_at: _ignored, ...row }) => row);
+  }
 
   return {
-    cursor,
+    cursor: encodeCursor(next),
+    has_more: hasMore,
     changes: {
-      boards: boards.results as Changes["boards"],
-      snapshots: snapshots.results as Changes["snapshots"],
-      cards: cards.results.map((row) => ({ ...row, has_handwriting_image: Boolean(row.has_handwriting_image) })) as Changes["cards"],
-      time_logs: timeLogs.results as Changes["time_logs"],
+      boards: rows.boards as Changes["boards"],
+      snapshots: rows.snapshots as Changes["snapshots"],
+      cards: rows.cards.map((row) => ({ ...row, has_handwriting_image: Boolean(row.has_handwriting_image) })) as Changes["cards"],
+      time_logs: rows.time_logs as Changes["time_logs"],
     },
   };
 }

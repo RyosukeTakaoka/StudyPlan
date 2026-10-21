@@ -16,6 +16,7 @@ function env(db = createTestDb()): Env {
     PUBLIC_URL: "http://localhost:8787",
     ALLOWED_GITHUB_LOGINS: "me",
     DEVICE_TOKEN_HASHES: createHash("sha256").update(TOKEN).digest("hex"),
+    SYNC_SETTLE_MS: "0",
   };
 }
 
@@ -48,7 +49,8 @@ test("同期 API：push → pull → 全削除", async () => {
   assert.equal((await pushed.json() as { accepted: number }).accepted, 1);
 
   const pulled = await syncApi.request("/v1/sync/pull?since=", { headers }, e);
-  const body = await pulled.json() as { changes: { cards: unknown[]; boards: unknown[]; snapshots: unknown[]; time_logs: unknown[] }; cursor: string };
+  const body = await pulled.json() as { changes: { cards: unknown[]; boards: unknown[]; snapshots: unknown[]; time_logs: unknown[] }; cursor: string; has_more: boolean };
+  assert.equal(body.has_more, false);
   assert.equal(body.changes.cards.length, 1);
   // アプリは4つの配列がそろっている前提で読む
   assert.ok(Array.isArray(body.changes.boards) && Array.isArray(body.changes.snapshots) && Array.isArray(body.changes.time_logs));

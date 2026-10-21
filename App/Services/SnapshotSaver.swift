@@ -37,6 +37,8 @@ enum SnapshotSaver {
                 end: draft.end,
                 category: draft.category
             )
+            // 日付をまたぐカードも、撮影した日（写真の対象日）のカードとして扱う
+            card.dayKey = snapshot.dayKey
             context.insert(card)
             snapshot.cards?.append(card)
             // 前に持ち越したカードと同じタイトルなら、持ち越し元としてつなぎ、回数を引き継ぐ
@@ -47,9 +49,9 @@ enum SnapshotSaver {
             cards.append(card)
         }
 
-        // 次回の定点撮影で重ねる写真。画像のない取り込み（App Intents）では前回のものを残す。
+        // 次回の定点撮影で重ねる写真。画像のない取り込み（App Intents）とサンプルでは前回のものを残す。
         let reference = original ?? corrected
-        if let data = reference.downscaled(maxDimension: 1600).jpegData(compressionQuality: 0.7) {
+        if !isSample, let data = reference.downscaled(maxDimension: 1600).jpegData(compressionQuality: 0.7) {
             board.referencePhoto = data
             board.touch()
         }

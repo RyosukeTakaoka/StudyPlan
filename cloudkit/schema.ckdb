@@ -70,6 +70,7 @@ DEFINE SCHEMA
         CD_handwriting_ckAsset    ASSET,
         CD_id                     STRING QUERYABLE SEARCHABLE SORTABLE,
         CD_linesData              BYTES,
+        CD_linesData_ckAsset      ASSET,
         CD_snapshot               STRING QUERYABLE SEARCHABLE SORTABLE,
         CD_start                  TIMESTAMP QUERYABLE SORTABLE,
         CD_statusRaw              STRING QUERYABLE SEARCHABLE SORTABLE,

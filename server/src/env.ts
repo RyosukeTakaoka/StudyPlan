@@ -15,6 +15,8 @@ export interface Env {
   DEVICE_TOKEN_HASHES?: string;
   /** フェーズBの書き込みツールを出すか（"true" のときだけ）。初期値はフェーズAのみ。 */
   MCP_ALLOW_WRITES?: string;
+  /** pull で「受け取ってから何ミリ秒たった変更を返すか」。テスト用（初期値 2000） */
+  SYNC_SETTLE_MS?: string;
   /** authless 環境だけ "true" */
   AUTHLESS_LOCAL?: string;
   /** OAuthProvider が入れてくれる */

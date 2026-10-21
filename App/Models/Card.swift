@@ -120,7 +120,7 @@ extension Card {
     func setTimes(start: Date, end: Date) {
         self.start = start
         self.end = max(end, start)
-        dayKey = TimeText.dayKey(start)
+        // dayKey は写真の対象日のまま（日付をまたいでも、撮影した日のカード）
         touch()
     }
 }

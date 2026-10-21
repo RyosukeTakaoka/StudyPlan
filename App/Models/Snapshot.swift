@@ -30,7 +30,8 @@ final class Snapshot: SyncTracked {
     init(capturedAt: Date, targetDate: Date) {
         self.id = UUID()
         self.capturedAt = capturedAt
-        self.targetDate = Calendar.current.startOfDay(for: targetDate)
+        // 日付は Asia/Tokyo で決める（サーバー・AI と同じ日付キーにそろえる）
+        self.targetDate = TimeText.tokyoCalendar.startOfDay(for: targetDate)
         self.dayKey = TimeText.dayKey(targetDate)
         self.updatedAt = .now
     }
@@ -57,6 +58,7 @@ extension Snapshot {
 
     /// その日の最新の写真（snapshots は撮影日時の新しい順に並んでいる前提）
     static func latest(on day: Date, in snapshots: [Snapshot]) -> Snapshot? {
-        snapshots.first { $0.isAlive && Calendar.current.isDate($0.targetDate, inSameDayAs: day) }
+        let key = TimeText.dayKey(day)
+        return snapshots.first { $0.isAlive && $0.dayKey == key }
     }
 }
