@@ -1,0 +1,5 @@
+# ローカル開発用の秘密の値。.dev.vars にコピーして使う（.dev.vars は Git に入れない）。
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+# npm run token:new で作ったハッシュ（カンマ区切りで複数可）
+DEVICE_TOKEN_HASHES=

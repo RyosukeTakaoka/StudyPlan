@@ -1,0 +1,46 @@
+// Cloudflare Workers の設定。database_id と KV の id は、作成したときに表示される値に置き換える（README 参照）。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "studyplan-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "studyplan",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
+  ],
+  "vars": {
+    // 公開 URL（デプロイ後に表示される workers.dev の URL などに置き換える）
+    "PUBLIC_URL": "https://studyplan-mcp.example.workers.dev",
+    // フェーズBの書き込みツール（update_card_status / log_actual_time）を出すなら "true"
+    "MCP_ALLOW_WRITES": "false",
+    // MCP に入れる GitHub アカウント（カンマ区切り）。自分の1つだけにする。
+    "ALLOWED_GITHUB_LOGINS": ""
+  },
+  // secret（wrangler secret put で登録。ここには書かない）:
+  //   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, DEVICE_TOKEN_HASHES
+  "env": {
+    // 作る順番の 1：認証なしで /mcp が動くことを、ローカルだけで MCP Inspector で確かめる用。
+    // 実データを載せて公開しないこと（src/authless.ts は localhost 以外からの接続を断る）。
+    "authless": {
+      "main": "src/authless.ts",
+      "vars": { "AUTHLESS_LOCAL": "true", "PUBLIC_URL": "http://localhost:8787", "MCP_ALLOW_WRITES": "true", "ALLOWED_GITHUB_LOGINS": "" },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "studyplan-local",
+          "database_id": "local-only",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
+}

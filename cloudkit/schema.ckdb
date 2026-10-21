@@ -1,0 +1,112 @@
+DEFINE SCHEMA
+
+    RECORD TYPE CD_Board (
+        "___createTime"           TIMESTAMP SORTABLE,
+        "___createdBy"            REFERENCE,
+        "___etag"                 STRING,
+        "___modTime"              TIMESTAMP SORTABLE,
+        "___modifiedBy"           REFERENCE,
+        "___recordID"             REFERENCE QUERYABLE,
+        CD_createdAt              TIMESTAMP QUERYABLE SORTABLE,
+        CD_deletedAt              TIMESTAMP QUERYABLE SORTABLE,
+        CD_entityName             STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_id                     STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_kindRaw                STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_name                   STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_referencePhoto         BYTES,
+        CD_referencePhoto_ckAsset ASSET,
+        CD_updatedAt              TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CD_Snapshot (
+        "___createTime"           TIMESTAMP SORTABLE,
+        "___createdBy"            REFERENCE,
+        "___etag"                 STRING,
+        "___modTime"              TIMESTAMP SORTABLE,
+        "___modifiedBy"           REFERENCE,
+        "___recordID"             REFERENCE QUERYABLE,
+        CD_board                  STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_capturedAt             TIMESTAMP QUERYABLE SORTABLE,
+        CD_correctedPhoto         BYTES,
+        CD_correctedPhoto_ckAsset ASSET,
+        CD_dayKey                 STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_deletedAt              TIMESTAMP QUERYABLE SORTABLE,
+        CD_didCorrectPerspective  INT64 QUERYABLE SORTABLE,
+        CD_entityName             STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_fullText               STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_id                     STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_isSample               INT64 QUERYABLE SORTABLE,
+        CD_originalPhoto          BYTES,
+        CD_originalPhoto_ckAsset  ASSET,
+        CD_targetDate             TIMESTAMP QUERYABLE SORTABLE,
+        CD_updatedAt              TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CD_Card (
+        "___createTime"           TIMESTAMP SORTABLE,
+        "___createdBy"            REFERENCE,
+        "___etag"                 STRING,
+        "___modTime"              TIMESTAMP SORTABLE,
+        "___modifiedBy"           REFERENCE,
+        "___recordID"             REFERENCE QUERYABLE,
+        CD_carriedFromCardID      STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_carriedOverCount       INT64 QUERYABLE SORTABLE,
+        CD_categoryRaw            STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_cropHeight             DOUBLE QUERYABLE SORTABLE,
+        CD_cropWidth              DOUBLE QUERYABLE SORTABLE,
+        CD_cropX                  DOUBLE QUERYABLE SORTABLE,
+        CD_cropY                  DOUBLE QUERYABLE SORTABLE,
+        CD_dayKey                 STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_deletedAt              TIMESTAMP QUERYABLE SORTABLE,
+        CD_end                    TIMESTAMP QUERYABLE SORTABLE,
+        CD_entityName             STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_handwriting            BYTES,
+        CD_handwriting_ckAsset    ASSET,
+        CD_id                     STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_linesData              BYTES,
+        CD_snapshot               STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_start                  TIMESTAMP QUERYABLE SORTABLE,
+        CD_statusRaw              STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_transcription          STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_updatedAt              TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CD_TimeLog (
+        "___createTime"           TIMESTAMP SORTABLE,
+        "___createdBy"            REFERENCE,
+        "___etag"                 STRING,
+        "___modTime"              TIMESTAMP SORTABLE,
+        "___modifiedBy"           REFERENCE,
+        "___recordID"             REFERENCE QUERYABLE,
+        CD_actualEnd              TIMESTAMP QUERYABLE SORTABLE,
+        CD_actualStart            TIMESTAMP QUERYABLE SORTABLE,
+        CD_card                   STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_deletedAt              TIMESTAMP QUERYABLE SORTABLE,
+        CD_entityName             STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_id                     STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_updatedAt              TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Users (
+        "___createTime"           TIMESTAMP,
+        "___createdBy"            REFERENCE,
+        "___etag"                 STRING,
+        "___modTime"              TIMESTAMP,
+        "___modifiedBy"           REFERENCE,
+        "___recordID"             REFERENCE,
+        roles                     LIST<INT64>,
+        GRANT WRITE TO "_creator",
+        GRANT READ TO "_world"
+    );
